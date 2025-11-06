@@ -1,24 +1,21 @@
-FROM maven:3.9.9-eclipse-temurin-17 AS build
+# ======== Stage 1: Build the application ========
+FROM gradle:8.8-jdk17 AS build
+WORKDIR /home/gradle/project
+
+COPY gradlew .
+COPY gradle gradle
+RUN chmod +x gradlew
+
+COPY build.gradle settings.gradle ./
+COPY src src
+
+RUN ./gradlew clean build -x test --no-daemon
+
+FROM eclipse-temurin:17-jdk-jammy
 WORKDIR /app
 
-COPY pom.xml .
-RUN mvn -q -e -B -U -DskipTests dependency:go-offline
-
-COPY src ./src
-RUN mvn -q -e -B -DskipTests package
-
-FROM eclipse-temurin:17-jre-alpine
-RUN apk add --no-cache tini
-
-RUN addgroup -S app && adduser -S app -G app
-USER app
-
-WORKDIR /app
-COPY --from=build /app/target/*.jar app.jar
-
-ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
-ENV SPRING_PROFILES_ACTIVE=prod
+COPY --from=build /home/gradle/project/build/libs/*.jar app.jar
 
 EXPOSE 8080
-ENTRYPOINT ["/sbin/tini","--"]
-CMD ["sh","-c","java $JAVA_OPTS -jar /app/app.jar"]
+
+ENTRYPOINT ["java", "-jar", "app.jar"]
